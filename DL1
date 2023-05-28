@@ -1,0 +1,65 @@
+# Data analysis and visualization
+import tensorflow as tf
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+%matplotlib inline 
+
+# Preprocessing and evaluation
+from sklearn.model_selection import train_test_split
+from sklearn.compose import make_column_transformer
+from sklearn.preprocessing import MinMaxScaler
+
+#load data
+(X_train , y_train), (X_test , y_test) = tf.keras.datasets.boston_housing.load_data(
+                                            path = 'boston_housing_npz',
+                                            test_split = 0.2,
+                                            seed = 42
+                                        )
+                                        
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+
+#model creation
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
+
+model = Sequential()
+model.add(Dense(1, input_dim=X_train.shape[1], activation='linear'))
+
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+#model training 
+model.fit(X_train, y_train, epochs=100, batch_size=32, validation_split=0.2)
+
+#model evaluation
+loss = model.evaluate(X_train, y_train)
+print(f"Training Loss: {loss:.4f}")
+
+#prediction 
+# Assuming you have a new house with feature values in the variable `new_house_features`
+new_house_features = [[0.00632, 18.0, 2.31, 0, 0.538, 6.575, 65.2, 4.09, 1, 296.0, 15.3, 396.9, 4.98]]  # Example values
+
+# Scale the new house features using the same scaler used during data preprocessing
+new_house_features = scaler.transform(new_house_features)
+
+predicted_price = model.predict(new_house_features)
+print(f"Predicted Price: ${predicted_price[0][0]:.2f}")
+
+
+#for importing dataset separately and splitting into training and testing 
+pip install pandas
+pip install sklearn
+import pandas as pd
+from sklearn.model_selection import train_test_split
+data = pd.read_csv(dataset_url)
+print data.head()
+X_train, X_test, y_train, y_test = train_test_split(X, y,test_size=0.2)
+print("\nX_train:\n")
+print(X_train.head())
+print(X_train.shape)
+
+print("\nX_test:\n")
+print(X_test.head())
+print(X_test.shape)
