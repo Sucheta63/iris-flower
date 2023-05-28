@@ -1,0 +1,37 @@
+from tensorflow.keras.datasets import imdb
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Embedding, LSTM, Dense
+import numpy as np
+from tensorflow.keras.preprocessing.text import Tokenizer
+
+(x_train, y_train), (x_test, y_test) = imdb.load_data(num_words=10000)
+
+#data preprocessing 
+max_sequence_length = 250
+x_train = pad_sequences(x_train, maxlen=max_sequence_length)
+x_test = pad_sequences(x_test, maxlen=max_sequence_length)
+y_train = np.array(y_train)
+y_test = np.array(y_test)
+
+#model creartion and traing 
+embedding_dim = 50
+model = Sequential()
+model.add(Embedding(10000, embedding_dim, input_length=max_sequence_length))
+model.add(LSTM(units=50))
+model.add(Dense(units=1, activation='sigmoid'))
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+model.fit(x_train, y_train, batch_size=64, epochs=5, validation_data=(x_test, y_test
+
+#use trained model for prediction
+new_reviews = ["This movie was great!", "I didn't like the film at all."]
+tokenizer = Tokenizer(num_words=10000)
+tokenizer.fit_on_texts(new_reviews)
+new_sequences = tokenizer.texts_to_sequences(new_reviews)
+new_data = pad_sequences(new_sequences, maxlen=max_sequence_length)
+predictions = model.predict(new_data)
+sentiment_labels = ['Positive', 'Negative']
+
+for review, prediction in zip(new_reviews, predictions):
+    sentiment = sentiment_labels[int(np.round(prediction))]
+    print(f"Review: {review}  Sentiment: {sentiment}")
