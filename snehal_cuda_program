@@ -1,0 +1,283 @@
+Cuda parallel reduction :
+87% of storage used … You can clean up space or get more storage for Drive, Gmail, and Google Photos.
+%%cu
+#include <stdio.h>
+
+#define BLOCK_SIZE 256
+
+// Kernel for parallel reduction using min operation
+__global__ void reduceMin(int* input, int* output, int size) {
+    __shared__ int sdata[BLOCK_SIZE];
+    unsigned int tid = threadIdx.x;
+    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Load data into shared memory
+    if (i < size) {
+        sdata[tid] = input[i];
+    } else {
+        sdata[tid] = INT_MAX;
+    }
+
+    __syncthreads();
+
+    // Perform reduction within each block
+    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            sdata[tid] = min(sdata[tid], sdata[tid + stride]);
+        }
+        __syncthreads();
+    }
+
+    // Write the result for this block to global memory
+    if (tid == 0) {
+        output[blockIdx.x] = sdata[0];
+    }
+}
+
+// Kernel for parallel reduction using max operation
+__global__ void reduceMax(int* input, int* output, int size) {
+    __shared__ int sdata[BLOCK_SIZE];
+    unsigned int tid = threadIdx.x;
+    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Load data into shared memory
+    if (i < size) {
+        sdata[tid] = input[i];
+    } else {
+        sdata[tid] = INT_MIN;
+    }
+
+    __syncthreads();
+
+    // Perform reduction within each block
+    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            sdata[tid] = max(sdata[tid], sdata[tid + stride]);
+        }
+        __syncthreads();
+    }
+
+    // Write the result for this block to global memory
+    if (tid == 0) {
+        output[blockIdx.x] = sdata[0];
+    }
+}
+
+// Kernel for parallel reduction using sum operation
+__global__ void reduceSum(int* input, int* output, int size) {
+    __shared__ int sdata[BLOCK_SIZE];
+    unsigned int tid = threadIdx.x;
+    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Load data into shared memory
+    if (i < size) {
+        sdata[tid] = input[i];
+    } else {
+        sdata[tid] = 0;
+    }
+
+    __syncthreads();
+
+    // Perform reduction within each block
+    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            sdata[tid] += sdata[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // Write the result for this block to global memory
+    if (tid == 0) {
+        output[blockIdx.x] = sdata[0];
+    }
+}
+
+// Kernel for parallel reduction using average operation
+__global__ void reduceAverage(int* input, float* output, int size) {
+    __shared__ float sdata[BLOCK_SIZE];
+    unsigned int tid = threadIdx.x;
+    unsigned int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Load data into shared memory
+    if (i < size) {
+        sdata[tid] = static_cast<float>(input[i]);
+    } else {
+        sdata[tid] = 0.0f;
+    }
+
+    __syncthreads();
+
+    // Perform reduction within each block
+    for (unsigned int stride = blockDim.x / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            sdata[tid] += sdata[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // Write the result for this block to global memory
+    if (tid == 0) {
+        output[blockIdx.x] = sdata[0] / static_cast<float>(size);
+    }
+}
+
+int main() {
+    // Input array
+    const int array_size = 256;
+    int input[array_size];
+
+    // Initialize input array
+    for (int i = 0; i < array_size; ++i) {
+        input[i] = i + 1;
+    }
+
+    // Allocate device memory
+    int* d_input;
+    int* d_output_min;
+    int* d_output_max;
+    int* d_output_sum;
+    float* d_output_avg;
+    cudaMalloc((void**)&d_input, sizeof(int) * array_size);
+    cudaMalloc((void**)&d_output_min, sizeof(int) * array_size);
+    cudaMalloc((void**)&d_output_max, sizeof(int) * array_size);
+    cudaMalloc((void**)&d_output_sum, sizeof(int) * array_size);
+    cudaMalloc((void**)&d_output_avg, sizeof(float) * array_size);
+
+    // Copy input array to device memory
+    cudaMemcpy(d_input, input, sizeof(int) * array_size, cudaMemcpyHostToDevice);
+
+    // Determine the number of threads and blocks
+    int threads_per_block = BLOCK_SIZE;
+    int blocks_per_grid = (array_size + threads_per_block - 1) / threads_per_block;
+
+    // Launch the kernels for parallel reduction
+    reduceMin<<<blocks_per_grid, threads_per_block>>>(d_input, d_output_min, array_size);
+    reduceMax<<<blocks_per_grid, threads_per_block>>>(d_input, d_output_max, array_size);
+    reduceSum<<<blocks_per_grid, threads_per_block>>>(d_input, d_output_sum, array_size);
+    reduceAverage<<<blocks_per_grid, threads_per_block>>>(d_input, d_output_avg, array_size);
+
+    // Copy the results back to the host
+    int min_result, max_result, sum_result;
+    float avg_result;
+    cudaMemcpy(&min_result, d_output_min, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&max_result, d_output_max, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&sum_result, d_output_sum, sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&avg_result, d_output_avg, sizeof(float), cudaMemcpyDeviceToHost);
+
+    // Print the results
+    printf("Minimum value: %d\n", min_result);
+    printf("Maximum value: %d\n", max_result);
+    printf("Sum: %d\n", sum_result);
+    printf("Average: %.2f\n", avg_result);
+
+    // Free device memory
+    cudaFree(d_input);
+    cudaFree(d_output_min);
+    cudaFree(d_output_max);
+    cudaFree(d_output_sum);
+    cudaFree(d_output_avg);
+
+    return 0;
+}
+// matrix multiplication :
+87% of storage used … You can clean up space or get more storage for Drive, Gmail, and Google Photos.
+%%cu
+#include <iostream>
+using namespace std;
+
+
+// CUDA code to multiply matrices
+__global__ void multiply(int* A, int* B, int* C, int size) {
+    // Uses thread indices and block indices to compute each element
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < size && col < size) {
+        int sum = 0;
+        for (int i = 0; i < size; i++) {
+            sum += A[row * size + i] * B[i * size + col];
+        }
+        C[row * size + col] = sum;
+    }
+}
+
+
+void initialize(int* matrix, int size) {
+    for (int i = 0; i < size * size; i++) {
+        matrix[i] = rand() % 10;
+    }
+}
+
+
+void print(int* matrix, int size) {
+    for (int row = 0; row < size; row++) {
+        for (int col = 0; col < size; col++) {
+            cout << matrix[row * size + col] << " ";
+        }
+        cout << '\n';
+    }
+    cout << '\n';
+}
+
+
+int main() {
+    int* A, * B, * C;
+
+    int N = 2;
+    int blockSize =  16;
+
+    int matrixSize = N * N;
+    size_t matrixBytes = matrixSize * sizeof(int);
+
+    A = new int[matrixSize];
+    B = new int[matrixSize];
+    C = new int[matrixSize];
+
+    initialize(A, N);
+    initialize(B, N);
+    cout << "Matrix A: \n";
+    print(A, N);
+
+    cout << "Matrix B: \n";
+    print(B, N);
+
+    
+    int* X, * Y, * Z;
+    // Allocate space
+    cudaMalloc(&X, matrixBytes);
+    cudaMalloc(&Y, matrixBytes);
+    cudaMalloc(&Z, matrixBytes);
+
+    // Copy values from A to X
+    cudaMemcpy(X, A, matrixBytes, cudaMemcpyHostToDevice);
+    
+    // Copy values from A to X and B to Y
+    cudaMemcpy(Y, B, matrixBytes, cudaMemcpyHostToDevice);
+
+    // Threads per CTA dimension
+    int THREADS = 2;
+
+    // Blocks per grid dimension (assumes THREADS divides N evenly)
+    int BLOCKS = N / THREADS;
+
+    // Use dim3 structs for block  and grid dimensions
+    dim3 threads(THREADS, THREADS);
+    dim3 blocks(BLOCKS, BLOCKS);
+
+    // Launch kernel
+    multiply<<<blocks, threads>>>(X, Y, Z, N);
+
+    cudaMemcpy(C, Z, matrixBytes, cudaMemcpyDeviceToHost);
+    cout << "Multiplication of matrix A and B: \n";
+    print(C, N);
+
+    delete[] A;
+    delete[] B;
+    delete[] C;
+
+    cudaFree(X);
+    cudaFree(Y);
+    cudaFree(Z);
+
+    return 0;
+}
